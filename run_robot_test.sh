@@ -65,6 +65,10 @@ fi
 currentpath=`pwd`
 case "$(uname -s)" in
 Linux)
+  if ! command -v lsb_release &> /dev/null
+  then
+      echo "INFO: lsb_release command is not available"
+  else
    case "$(lsb_release --id --short)" in
    "Fedora"|"CentOS")
          ## Bootstrap script to setup drivers ##
@@ -84,6 +88,7 @@ Linux)
          exit 1
     ;;
     esac
+  fi
 
 #TODO: Make this optional so we are not creating/updating the virtualenv everytime we run a test
 VENV_ROOT=${currentpath}/venv
