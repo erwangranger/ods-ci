@@ -15,8 +15,13 @@ RUN mkdir $HOME/ods-ci
 WORKDIR $HOME/ods-ci
 
 COPY tests tests/
-COPY requirements.txt run_robot_test.sh setup.py .
+COPY requirements.txt setup.py .
+
+## next line is time-consuming
 RUN python3 -m venv venv && source venv/bin/activate && venv/bin/pip3 install -r requirements.txt
+
+## moved this line here for faster rebuilds
+COPY run_robot_test.sh .
 
 # Set the group ownership so non-root users can write to /tmp
 RUN chgrp -R 0 /tmp && chmod -R g=u /tmp
