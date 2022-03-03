@@ -10,9 +10,11 @@ must-gather-results.txt
 .DS_Store
 .idea/
 Results/
+results/
 __pycache__/
 oc
 kubeconfig
 htpasswd.txt
 # Ignore any variables file too, just in case.
 *-variables.yml
+robocop.log

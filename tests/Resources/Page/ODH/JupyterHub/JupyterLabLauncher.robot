@@ -99,25 +99,30 @@ Stop JupyterLab Notebook Server
     Capture Page Screenshot
   END
 
-
 Logout JupyterLab
   Open With JupyterLab Menu  File  Log Out
 
 Run Cell And Check For Errors
-  [Arguments]  ${input}
-  Add and Run JupyterLab Code Cell in Active Notebook  ${input}
-  Wait Until JupyterLab Code Cell Is Not Active
-  #Get the text of the last output cell
-  ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
-  Should Not Match  ${output}  ERROR*
+    [Arguments]  ${input}
+    Add and Run JupyterLab Code Cell in Active Notebook  ${input}
+    Wait Until JupyterLab Code Cell Is Not Active
+    ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
+    Should Not Match  ${output}  ERROR*
 
 Run Cell And Check Output
-  [Arguments]  ${input}  ${expected_output}
-  Add and Run JupyterLab Code Cell in Active Notebook  ${input}
-  Wait Until JupyterLab Code Cell Is Not Active
-  #Get the text of the last output cell
-  ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
-  Should Match  ${output}  ${expected_output}
+    [Arguments]  ${input}  ${expected_output}
+    Add and Run JupyterLab Code Cell in Active Notebook  ${input}
+    Wait Until JupyterLab Code Cell Is Not Active
+    ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
+    Should Match  ${output}  ${expected_output}
+
+Run Cell And Get Output
+    [Documentation]    Runs a code cell and returns its output
+    [Arguments]    ${input}
+    Add and Run JupyterLab Code Cell in Active Notebook  ${input}
+    Wait Until JupyterLab Code Cell Is Not Active
+    ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
+    [Return]    ${output}
 
 Python Version Check
   [Arguments]  ${expected_version}=3.8
@@ -143,16 +148,10 @@ Clean Up Server
   Sleep  1
   Maybe Close Popup
   Open With JupyterLab Menu  File  New  Notebook
-  Sleep  1
+  Sleep  2
   Maybe Close Popup
-  Open With JupyterLab Menu  File  Open from Path…
-  Input Text  xpath=//input[@placeholder="/path/relative/to/jlab/root"]  Untitled.ipynb
-  Click Element  xpath://div[.="Open"]
-  Maybe Close Popup
-  Wait Until Untitled.ipynb JupyterLab Tab Is Selected
-  Sleep  5
   Add and Run JupyterLab Code Cell in Active Notebook  !rm -rf *
-
+  Wait Until JupyterLab Code Cell Is Not Active
 
 Get User Notebook Pod Name
   [Documentation]   Returns notebook pod name for given username  (e.g. for user ldap-admin1 it will be jupyterhub-nb-ldap-2dadmin1)
@@ -208,7 +207,6 @@ Delete Folder In User Notebook
   ELSE
       Fail  msg=This command requires ${admin_username} to be connected to the cluster (oc login ...)
   END
-
 
 JupyterLab Is Visible
   ${jupyterlab_visible} =  Run Keyword and Return Status  Wait Until Element Is Visible  xpath:${JL_TABBAR_CONTENT_XPATH}  timeout=30
@@ -266,7 +264,7 @@ Run Repo and Clean
   Sleep  15
   Click Element  xpath://span[@title="/opt/app-root/src"]
   Open With JupyterLab Menu  File  Close All Tabs
-  Maybe Accept a JupyterLab Prompt
+  Maybe Close Popup
   Open With JupyterLab Menu  File  New  Notebook
   Sleep  1
   Maybe Close Popup
@@ -342,3 +340,54 @@ Get JupyterLab Code Output In a Given Tab
 
 Select ${filename} Tab
   Click Element    xpath:${JL_TABBAR_CONTENT_XPATH}/li/div[.="${filename}"]
+
+Verify Installed Library Version
+    [Arguments]  ${lib}  ${ver}
+    ${status}  ${value} =  Run Keyword And Warn On Failure  Run Cell And Check Output  !pip show ${lib} | grep Version: | awk '{split($0,a); print a[2]}' | awk '{split($0,b,"."); printf "%s.%s", b[1], b[2]}'  ${ver}
+    Run Keyword If  '${status}' == 'FAIL'  Log  "Expected ${lib} at version ${ver}, but ${value}"
+    [Return]    ${status}
+
+Check Versions In JupyterLab
+    [Arguments]  ${libraries-to-check}
+    ${return_status} =    Set Variable    PASS
+    FOR  ${libString}  IN  @{libraries-to-check}
+        # libString = LibName vX.Y -> libDetail= [libName, X.Y]
+        @{libDetail} =  Split String  ${libString}  ${SPACE}v
+        IF  "${libDetail}[0]" == "TensorFlow"
+            ${status} =  Verify Installed Library Version  tensorflow-gpu  ${libDetail}[1]
+            IF  '${status}' == 'FAIL'
+              ${return_status} =    Set Variable    FAIL
+            END
+        ELSE IF  "${libDetail}[0]" == "PyTorch"
+            ${status} =  Verify Installed Library Version  torch  ${libDetail}[1]
+            IF  '${status}' == 'FAIL'
+              ${return_status} =    Set Variable    FAIL
+            END
+        ELSE IF  "${libDetail}[0]" == "Python"
+            ${status} =  Python Version Check  ${libDetail}[1]
+        ELSE
+            ${status} =  Verify Installed Library Version  ${libDetail}[0]  ${libDetail}[1]
+            IF  '${status}' == 'FAIL'
+              ${return_status} =    Set Variable    FAIL
+            END
+        END
+    END
+    [Return]  ${return_status}
+
+Install And Import Package In JupyterLab
+    [Documentation]  Install any Package and import it
+    [Arguments]  ${package}
+    Add and Run JupyterLab Code Cell in Active Notebook  !pip install ${package}
+    Add and Run JupyterLab Code Cell in Active Notebook  import ${package}
+    Wait Until JupyterLab Code Cell Is Not Active
+    JupyterLab Code Cell Error Output Should Not Be Visible
+    Capture Page Screenshot
+
+Verify Package Is Not Installed In JupyterLab
+    [Documentation]  Check Package is not Installed
+    [Arguments]  ${package_name}
+    Add and Run JupyterLab Code Cell in Active Notebook  import ${package_name}
+    Wait Until JupyterLab Code Cell Is Not Active
+    ${output} =  Get Text  (//div[contains(@class,"jp-OutputArea-output")])[last()]
+    ${output}   Split String     ${output}   \n\n   
+    Should Match  ${output[-1]}   ModuleNotFoundError: No module named '${package_name}'
